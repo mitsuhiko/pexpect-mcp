@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "pexpect": {
+      "type": "stdio",
+      "command": "/Users/mitsuhiko/.cargo/bin/uv",
+      "args": ["run", "pexpect-mcp"],
+      "env": {}
+    }
+  }
+}
