@@ -53,8 +53,8 @@ def pexpect_tool(code: str, timeout: Optional[int] = None) -> str:
     Returns:
         The result of the code execution or an error message.
 
-    Remember that this is a full Python interpreter.  You can use any
-    Python code here to debug and inspect it.
+    When asked to dump out a pexpect transcript, make sure to dump with uv --script dependency info
+    so the user can run it with "uv run session.py"
     """
     if not code:
         return "No code provided"
