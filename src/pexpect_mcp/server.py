@@ -10,7 +10,7 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("pexpect-mcp")
 
 # Global timeout setting (can be overridden by tool caller)
-TIMEOUT = 30
+TIMEOUT = 15
 
 pexpect_session: Optional[pexpect.spawn] = None
 session_globals: Dict[str, Any] = {}
@@ -18,6 +18,7 @@ session_globals: Dict[str, Any] = {}
 
 class TimeoutError(Exception):
     """Raised when pexpect operation times out."""
+
     pass
 
 
@@ -43,7 +44,7 @@ def pexpect_tool(code: str, timeout: Optional[int] = None) -> str:
     Args:
         code: Python code to execute. Use 'child' variable to interact with the spawned process.
         The pexpect library is already imported.  Use `pexpect.spawn(...)` to spawn something.
-        timeout: Optional timeout in seconds. If not provided, uses global TIMEOUT (default 30s).
+        timeout: Optional timeout in seconds. If not provided, uses global TIMEOUT (default 15s).
 
     Example:
         child = pexpect.spawn('lldb ./mytool')
@@ -51,6 +52,9 @@ def pexpect_tool(code: str, timeout: Optional[int] = None) -> str:
 
     Returns:
         The result of the code execution or an error message.
+
+    Remember that this is a full Python interpreter.  You can use any
+    Python code here to debug and inspect it.
     """
     if not code:
         return "No code provided"
@@ -59,14 +63,18 @@ def pexpect_tool(code: str, timeout: Optional[int] = None) -> str:
 
     # Use provided timeout or global default
     actual_timeout = timeout if timeout is not None else TIMEOUT
-    
+
     # Set up the execution environment
     local_vars = session_globals.copy()
     local_vars["pexpect"] = pexpect
+    # Set default timeout for new pexpect sessions
+    local_vars["PEXPECT_TIMEOUT"] = actual_timeout
 
     # If we have an active session, make it available as 'child'
     if pexpect_session is not None:
         local_vars["child"] = pexpect_session
+        # Set default timeout for pexpect operations
+        pexpect_session.timeout = actual_timeout
 
     # Set up signal alarm for timeout
     old_handler = signal.signal(signal.SIGALRM, timeout_handler)
@@ -75,15 +83,7 @@ def pexpect_tool(code: str, timeout: Optional[int] = None) -> str:
     try:
         # Try to execute as an expression first
         result = eval(code, {"__builtins__": __builtins__}, local_vars)
-
-        # Update globals (excluding built-ins)
-        for key, value in local_vars.items():
-            if key not in ["__builtins__", "pexpect"]:
-                session_globals[key] = value
-
-                # If a 'child' variable was created/modified, update our session
-                if key == "child" and isinstance(value, pexpect.spawn):
-                    pexpect_session = value
+        _update_globals(local_vars, actual_timeout)
 
         # Return the result
         if result is not None:
@@ -95,16 +95,7 @@ def pexpect_tool(code: str, timeout: Optional[int] = None) -> str:
         # If it's not an expression, try executing as a statement
         try:
             exec(code, {"__builtins__": __builtins__}, local_vars)
-
-            # Update globals
-            for key, value in local_vars.items():
-                if key not in ["__builtins__", "pexpect"]:
-                    session_globals[key] = value
-
-                    # If a 'child' variable was created/modified, update our session
-                    if key == "child" and isinstance(value, pexpect.spawn):
-                        pexpect_session = value
-
+            _update_globals(local_vars, actual_timeout)
             return "Code executed successfully"
 
         except Exception as exec_error:
@@ -122,6 +113,17 @@ def pexpect_tool(code: str, timeout: Optional[int] = None) -> str:
         # Always clean up the alarm and restore old handler
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)
+
+
+def _update_globals(local_vars, spawn_timeout):
+    for key, value in local_vars.items():
+        if key not in ["__builtins__", "pexpect"]:
+            session_globals[key] = value
+            # If a 'child' variable was created/modified, update our session
+            if key == "child" and isinstance(value, pexpect.spawn):
+                pexpect_session = value
+                # Set default timeout for the new session
+                pexpect_session.timeout = spawn_timeout
 
 
 def main():
