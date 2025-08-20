@@ -1,11 +1,20 @@
-import signal
+# --- imports ---
 import sys
 import traceback
 from io import StringIO
 from typing import Any, Dict, Optional
 
-import pexpect
 from mcp.server.fastmcp import FastMCP
+
+
+if sys.platform == "win32":
+    import wexpect as pexpect
+    signal = None
+    HAS_ALARM = False
+else:
+    import pexpect
+    import signal
+    HAS_ALARM = hasattr(signal, "SIGALRM") and hasattr(signal, "alarm")
 
 
 mcp = FastMCP("pexpect-mcp")
@@ -96,8 +105,10 @@ def pexpect_tool(code: str, timeout: Optional[int] = None) -> str:
         pexpect_session.timeout = pexpect_timeout
 
     # Set up signal alarm for timeout
-    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(actual_timeout)
+    old_handler = None
+    if HAS_ALARM:
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(actual_timeout)
 
     try:
         # Try to execute as an expression first
@@ -130,8 +141,9 @@ def pexpect_tool(code: str, timeout: Optional[int] = None) -> str:
 
     finally:
         # Always clean up the alarm and restore old handler
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
+        if HAS_ALARM and old_handler is not None:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
 
 
 def _format_response(result, log_output):

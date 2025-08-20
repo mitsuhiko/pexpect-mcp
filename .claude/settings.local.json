@@ -1,6 +1,2 @@
 {
-  "enabledMcpjsonServers": [
-    "pexpect"
-  ],
-  "enableAllProjectMcpServers": true
 }
